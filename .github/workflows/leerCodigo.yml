@@ -9,15 +9,24 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # ------------------------------
+      # 1. Checkout del repositorio
+      # ------------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # ------------------------------
+      # 2. Configurar Java
+      # ------------------------------
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # ------------------------------
+      # 3. Cache de dependencias Maven
+      # ------------------------------
       - name: Cache Maven dependencies
         uses: actions/cache@v3
         with:
@@ -26,15 +35,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # -------------------------------------------------------
-      # 1. Compilar proyecto
-      # -------------------------------------------------------
+      # ------------------------------
+      # 4. Compilar proyecto
+      # ------------------------------
       - name: Compilar proyecto
         run: mvn -q clean compile test-compile
 
-      # -------------------------------------------------------
-      # 2. Ejecutar análisis de código
-      # -------------------------------------------------------
+      # ------------------------------
+      # 5. Ejecutar análisis de código
+      # ------------------------------
       - name: Checkstyle
         run: mvn -q checkstyle:check || true
 
@@ -44,20 +53,20 @@ jobs:
       - name: SpotBugs Analysis
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
-      # -------------------------------------------------------
-      # 3. Generar reporte HTML embellecido
-      # -------------------------------------------------------
-      - name: Generar reporte HTML embellecido
+      # ------------------------------
+      # 6. Generar reporte HTML avanzado
+      # ------------------------------
+      - name: Generar reporte HTML avanzado
         run: |
           cat << 'EOF' > reporte_final.html
           <html>
           <head>
             <meta charset='UTF-8'>
-            <title>Reporte de Análisis de Código</title>
+            <title>Reporte Avanzado de Análisis de Código</title>
             <style>
-              body { font-family: Arial, sans-serif; padding: 20px; background: #f7f7f7; }
+              body { font-family: Arial, sans-serif; background: #f7f7f7; padding: 20px; }
               h1 { color: #1b4de4; }
-              h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 4px; }
+              h2 { border-bottom: 2px solid #ddd; padding-bottom: 4px; color: #333; margin-top: 30px; }
               table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
               th { background: #1b4de4; color: white; padding: 8px; }
               td { background: #fff; padding: 8px; border-bottom: 1px solid #ddd; }
@@ -68,63 +77,85 @@ jobs:
             </style>
           </head>
           <body>
-            <h1>📊 Reporte Consolidado de Análisis de Código</h1>
-            <p>Este reporte incluye resultados de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>
-          EOF
+            <h1>📊 Reporte Avanzado de Análisis de Código</h1>
+            <p>Este reporte consolida los resultados de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>
+            <div class="section">
+              <h2>🔹 Resumen General</h2>
+EOF
 
-          # ===== Checkstyle =====
+          # ----- Contar errores por herramienta -----
+          CS_COUNT=$(grep "<error " target/checkstyle-result.xml | wc -l || echo 0)
+          PMD_COUNT=$(grep "<violation" target/pmd.xml | wc -l || echo 0)
+          SB_COUNT=$(grep "<BugInstance" target/spotbugsXml.xml | wc -l || echo 0)
+
+          echo "<ul>" >> reporte_final.html
+          echo "<li>Checkstyle: $CS_COUNT problemas</li>" >> reporte_final.html
+          echo "<li>PMD: $PMD_COUNT problemas</li>" >> reporte_final.html
+          echo "<li>SpotBugs: $SB_COUNT bugs</li>" >> reporte_final.html
+          echo "</ul>" >> reporte_final.html
+
+          # ----- Función para mapear mensaje amigable -----
+          explain() {
+            case "$1" in
+              "Variable not used" ) echo "Variable declarada pero no usada. Ejemplo: eliminar la variable." ;;
+              "Null pointer" ) echo "Posible NullPointerException. Ejemplo: verificar null antes de usar." ;;
+              * ) echo "Verificar este error según la regla correspondiente." ;;
+            esac
+          }
+
+          # ----- Checkstyle -----
           grep "<error " target/checkstyle-result.xml > cs_temp.txt || true
-          CS_COUNT=$(wc -l < cs_temp.txt)
-          if [ "$CS_COUNT" -eq 0 ]; then
+          if [ $(wc -l < cs_temp.txt) -eq 0 ]; then
             echo "<div class='section'><h2>🧹 Checkstyle</h2><p class='ok'>🟢 Sin problemas detectados.</p></div>" >> reporte_final.html
           else
-            echo "<div class='section'><h2>🧹 Checkstyle</h2><p class='err'>🔴 $CS_COUNT problemas detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
+            echo "<div class='section'><h2>🧹 Checkstyle</h2><p class='err'>🔴 Problemas detectados:</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th><th>Explicación / Ejemplo</th></tr>" >> reporte_final.html
             while IFS= read -r line; do
               FILE=$(echo "$line" | sed -n 's/.*source="\(.*\)".*/\1/p')
               LINE=$(echo "$line" | sed -n 's/.*line="\([0-9]*\)".*/\1/p')
               MSG=$(echo "$line" | sed -n 's/.*message="\(.*\)".*/\1/p')
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
+              EXPL=$(explain "$MSG")
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$EXPL</td></tr>" >> reporte_final.html
             done < cs_temp.txt
             echo "</table></div>" >> reporte_final.html
           fi
 
-          # ===== PMD =====
+          # ----- PMD -----
           grep "<violation" target/pmd.xml > pmd_temp.txt || true
-          PMD_COUNT=$(wc -l < pmd_temp.txt)
-          if [ "$PMD_COUNT" -eq 0 ]; then
+          if [ $(wc -l < pmd_temp.txt) -eq 0 ]; then
             echo "<div class='section'><h2>📏 PMD</h2><p class='ok'>🟢 Sin problemas detectados.</p></div>" >> reporte_final.html
           else
-            echo "<div class='section'><h2>📏 PMD</h2><p class='warn'>🟠 $PMD_COUNT problemas detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
+            echo "<div class='section'><h2>📏 PMD</h2><p class='warn'>🟠 Problemas detectados:</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th><th>Explicación / Ejemplo</th></tr>" >> reporte_final.html
             while IFS= read -r line; do
               FILE=$(echo "$line" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
-              BEGIN=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+              LINE=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
               MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<.*/\1/p')
-              echo "<tr><td>$FILE</td><td>$BEGIN</td><td>$MSG</td></tr>" >> reporte_final.html
+              EXPL=$(explain "$MSG")
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$EXPL</td></tr>" >> reporte_final.html
             done < pmd_temp.txt
             echo "</table></div>" >> reporte_final.html
           fi
 
-          # ===== SpotBugs =====
+          # ----- SpotBugs -----
           grep "<BugInstance" target/spotbugsXml.xml > sb_temp.txt || true
-          SB_COUNT=$(wc -l < sb_temp.txt)
-          if [ "$SB_COUNT" -eq 0 ]; then
+          if [ $(wc -l < sb_temp.txt) -eq 0 ]; then
             echo "<div class='section'><h2>🐛 SpotBugs</h2><p class='ok'>🟢 Sin bugs detectados.</p></div>" >> reporte_final.html
           else
-            echo "<div class='section'><h2>🐛 SpotBugs</h2><p class='err'>🔴 $SB_COUNT bugs detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th></tr>" >> reporte_final.html
+            echo "<div class='section'><h2>🐛 SpotBugs</h2><p class='err'>🔴 Bugs detectados:</p><table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th><th>Explicación / Ejemplo</th></tr>" >> reporte_final.html
             while IFS= read -r line; do
               TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
               CLASS=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p' | sed 's/\./\//g')
               LINE=$(grep -A1 "$TYPE" target/spotbugsXml.xml | grep "<SourceLine" | head -1 | sed -n 's/.*start="\([0-9]*\)".*/\1/p')
-              echo "<tr><td>$CLASS.java</td><td>$LINE</td><td>$TYPE</td></tr>" >> reporte_final.html
+              EXPL=$(explain "$TYPE")
+              echo "<tr><td>$CLASS.java</td><td>$LINE</td><td>$TYPE</td><td>$EXPL</td></tr>" >> reporte_final.html
             done < sb_temp.txt
             echo "</table></div>" >> reporte_final.html
           fi
 
           echo "</body></html>" >> reporte_final.html
 
-      # -------------------------------------------------------
-      # 4. Subir reporte final HTML
-      # -------------------------------------------------------
+      # ------------------------------
+      # 7. Subir reporte HTML final
+      # ------------------------------
       - name: Subir reporte HTML
         uses: actions/upload-artifact@v4
         with:
