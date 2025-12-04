@@ -31,18 +31,14 @@ jobs:
           mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
       # ---------- OWASP DEPENDENCY CHECK ----------
-      - name: Escaneo de vulnerabilidades (OWASP Dependency Check)
-        uses: dependency-check/dependency-check-action@v2
-        with:
-          project: "LoginApp"
-          scan: "."
-          format: "ALL"
+      - name: Escaneo de vulnerabilidades (OWASP Dependency Check Maven)
+        run: mvn org.owasp:dependency-check-maven:check
 
       - name: Guardar reporte OWASP
         uses: actions/upload-artifact@v4
         with:
           name: owasp-report
-          path: ./reports
+          path: target/dependency-check-report.html
 
       # ---------- CODEQL (Seguridad avanzada) ----------
       - name: Inicializar CodeQL
@@ -52,5 +48,6 @@ jobs:
 
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
+
 
 
