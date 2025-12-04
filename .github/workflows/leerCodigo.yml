@@ -26,31 +26,30 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # 1. Compilación (pero sin ejecutar runner)
       - name: Compilar proyecto (solo compile + test-compile)
         run: mvn -q clean compile test-compile
 
-      # 2. Checkstyle
       - name: Analizar buenas prácticas (Checkstyle)
         run: mvn -q checkstyle:check || true
 
-      # 3. PMD (duplicación / complejidad / buenas prácticas)
       - name: PMD Analysis
         run: mvn -q pmd:pmd || true
 
-      # 4. SpotBugs
       - name: SpotBugs Analysis
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
-      # 5. Dependencias no utilizadas / malas referencias
       - name: Analizar dependencias (Maven Analyze)
         run: mvn -q dependency:analyze || true
 
-      # 6. (Opcional) Seguridad rápida y confiable con Snyk
-      #    Solo si agregas un secreto SNYK_TOKEN
-      # - name: Security Scan (Snyk)
-      #   uses: snyk/actions/maven@master
-      #   with:
-      #     command: test
-      #   env:
-      #     SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      # ⭐ Subir reportes para revisión
+      - name: Subir reportes de análisis
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-analisis
+          path: |
+            target/checkstyle-result.xml
+            target/pmd.xml
+            target/pmd.html
+            target/spotbugsXml.xml
+            target/site/spotbugs.html
+        if: always()
