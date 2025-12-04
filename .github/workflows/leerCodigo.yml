@@ -1,0 +1,58 @@
+name: Leer Código - Seguridad y Buenas Prácticas
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:   # <-- Permite ejecución manual
+
+jobs:
+  validar_codigo:
+    name: Validación de Código
+    runs-on: ubuntu-latest
+    timeout-minutes: 10   # <-- Límite de 10 minutos
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      # ---------- Setup Java ----------
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ---------- CHECKSTYLE ----------
+      - name: Analizar buenas prácticas (Checkstyle)
+        run: |
+          mvn -q checkstyle:check || true
+
+      # ---------- SPOTBUGS ----------
+      - name: Análisis estático (SpotBugs)
+        run: |
+          mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
+
+      # ---------- OWASP DEPENDENCY CHECK ----------
+      - name: Escaneo de vulnerabilidades (OWASP Dependency Check)
+        uses: dependency-check/Dependency-Check_Action@v4.1.0
+        with:
+          project: "LoginApp"
+          path: "."
+          format: "ALL"
+
+      - name: Guardar reporte OWASP
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-report
+          path: ./reports
+
+      # ---------- CODEQL (Seguridad avanzada) ----------
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+
+      - name: Ejecutar análisis CodeQL
+        uses: github/codeql-action/analyze@v3
