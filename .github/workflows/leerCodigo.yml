@@ -26,147 +26,140 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # ----------------------------------------------------------------------
-      # 1. Compilación del Proyecto
-      # ----------------------------------------------------------------------
       - name: Compilar proyecto
-        run: mvn -q clean compile test-compile
+        run: mvn -q clean compile
 
-      # ----------------------------------------------------------------------
-      # 2. Análisis de Código
-      # ----------------------------------------------------------------------
-      - name: Checkstyle
+      - name: Ejecutar Checkstyle
         run: mvn -q checkstyle:check || true
 
-      - name: PMD Analysis
+      - name: Ejecutar PMD
         run: mvn -q pmd:pmd || true
 
-      - name: SpotBugs Analysis
-        run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
+      - name: Ejecutar SpotBugs
+        run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:spotbugs || true
 
-      # ----------------------------------------------------------------------
-      # 3. Generar reporte HTML embellecido
-      # ----------------------------------------------------------------------
-      - name: Generar reporte HTML consolidado
+      # ==========================================================
+      # 🔥 GENERAR REPORTE HTML CLARO, BONITO Y EXPLICATIVO
+      # ==========================================================
+      - name: Crear reporte HTML consolidado
         run: |
-          cat << 'EOF' > reporte_final.html
-          <html>
-          <head>
-            <title>Reporte Consolidado de Análisis</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1, h2 { color: #2F4F4F; }
-              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-              th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              tr:nth-child(even) { background-color: #fafafa; }
-              .green { color: green; font-weight: bold; }
-              .red { color: red; font-weight: bold; }
-              .orange { color: orange; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-          <h1>🎯 Reporte Consolidado de Análisis de Código</h1>
-          <p>Este informe muestra los hallazgos de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>. Incluye archivo, línea, descripción y recomendación de solución.</p>
-          EOF
+          echo "<html><head><meta charset='UTF-8'>
+          <style>
+            body { font-family: Arial; margin: 20px; }
+            h1 { color: #003366; }
+            h2 { color: #0055aa; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+            th { background: #004A99; color: white; padding: 8px; }
+            td { border: 1px solid #ddd; padding: 6px; }
+            tr:nth-child(even) { background: #f2f2f2; }
+            .ok { color: green; font-weight: bold; }
+            .warn { color: orange; font-weight: bold; }
+            .err { color: red; font-weight: bold; }
+          </style>
+          </head><body>" > reporte_final.html
 
-          # -----------------------------
-          # Checkstyle
-          # -----------------------------
-          echo "<h2>🧹 Checkstyle – Formato y Estilo</h2>" >> reporte_final.html
-          grep "<error " target/checkstyle-result.xml > cs_temp.txt || true
-          CS_COUNT=$(wc -l < cs_temp.txt)
+          echo "<h1>🔎 Reporte Consolidado de Análisis de Código</h1>" >> reporte_final.html
+          echo "<p>Este reporte resume problemas detectados por <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>" >> reporte_final.html
 
-          if [ "$CS_COUNT" -eq 0 ]; then
-            echo "<p class='green'>Sin problemas detectados</p>" >> reporte_final.html
+          # ==========================================================
+          # CHECKSTYLE
+          # ==========================================================
+          echo "<h2>🧹 Checkstyle – Estilo y Convenciones</h2>" >> reporte_final.html
+
+          if xmllint --xpath "count(/checkstyle/file/error)" target/checkstyle-result.xml 2>/dev/null | grep -q '^0$'; then
+            echo "<p class='ok'>✔ No se encontraron problemas.</p>" >> reporte_final.html
           else
-            echo "<p class='red'>Problemas detectados: $CS_COUNT</p>" >> reporte_final.html
             echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th><th>Recomendación</th></tr>" >> reporte_final.html
-            while IFS= read -r line; do
-              FILE=$(echo "$line" | sed -n 's/.*source="\(.*\)".*/\1/p')
-              LINE=$(echo "$line" | sed -n 's/.*line="\([0-9]*\)".*/\1/p')
-              MSG=$(echo "$line" | sed -n 's/.*message="\(.*\)".*/\1/p')
-              RECOM="Corrige el formato o estilo según Checkstyle"
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$RECOM</td></tr>" >> reporte_final.html
-            done < cs_temp.txt
+            xmllint --xpath "/checkstyle/file" target/checkstyle-result.xml 2>/dev/null |
+            xmllint --format - |
+            grep "<file " |
+            sed 's/<file /\n<file /g' |
+            while read -r FILEBLOCK; do
+              FILENAME=$(echo "$FILEBLOCK" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+
+              echo "$FILEBLOCK" | grep "<error " | while read -r ERR; do
+                LINE=$(echo "$ERR" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
+                MSG=$(echo "$ERR" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
+
+                # Reglas simples para recomendaciones
+                if echo "$MSG" | grep -qi "Javadoc"; then
+                  REC="Agregar comentarios Javadoc claros."
+                elif echo "$MSG" | grep -qi "Parameter"; then
+                  REC="Marcar parámetros como final."
+                elif echo "$MSG" | grep -qi "constructor"; then
+                  REC="Hacer constructor privado para clase utilitaria."
+                else
+                  REC="Revisar formato o estilo según Checkstyle."
+                fi
+
+                echo "<tr><td>$FILENAME</td><td>$LINE</td><td>$MSG</td><td>$REC</td></tr>" >> reporte_final.html
+              done
+            done
             echo "</table>" >> reporte_final.html
           fi
 
-          # -----------------------------
+          # ==========================================================
           # PMD
-          # -----------------------------
-          echo "<h2>📏 PMD – Buenas Prácticas & Complejidad</h2>" >> reporte_final.html
-          grep "<violation" target/pmd.xml > pmd_temp.txt || true
-          PMD_COUNT=$(wc -l < pmd_temp.txt)
+          # ==========================================================
+          echo "<h2>📏 PMD – Buenas Prácticas</h2>" >> reporte_final.html
 
-          if [ "$PMD_COUNT" -eq 0 ]; then
-            echo "<p class='green'>Sin problemas detectados</p>" >> reporte_final.html
+          if xmllint --xpath "count(/pmd/file/violation)" target/pmd.xml 2>/dev/null | grep -q '^0$'; then
+            echo "<p class='ok'>✔ No se encontraron problemas.</p>" >> reporte_final.html
           else
-            echo "<p class='orange'>Problemas detectados: $PMD_COUNT</p>" >> reporte_final.html
             echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th><th>Recomendación</th></tr>" >> reporte_final.html
-            while IFS= read -r line; do
-              FILE=$(echo "$line" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
-              LINE=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
-              MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<.*/\1/p')
-              RECOM="Revisar complejidad o duplicación de código según PMD"
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$RECOM</td></tr>" >> reporte_final.html
-            done < pmd_temp.txt
+
+            xmllint --xpath "/pmd/file" target/pmd.xml 2>/dev/null |
+            sed 's/<file/\n<file/g' |
+            while read -r BLOCK; do
+              FILE=$(echo "$BLOCK" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+
+              echo "$BLOCK" | grep "<violation" | while read -r V; do
+                LINE=$(echo "$V" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+                MSG=$(echo "$V" | sed -n 's/.*>\(.*\)<.*/\1/p')
+
+                if echo "$MSG" | grep -qi "unused"; then
+                  REC="Eliminar importaciones o variables no utilizadas."
+                elif echo "$MSG" | grep -qi "qualifier"; then
+                  REC="Evitar nombres completamente calificados innecesarios."
+                else
+                  REC="Revisar buenas prácticas de PMD."
+                fi
+
+                echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$REC</td></tr>" >> reporte_final.html
+              done
+            done
             echo "</table>" >> reporte_final.html
           fi
 
-          # -----------------------------
-          # SpotBugs
-          # -----------------------------
+          # ==========================================================
+          # SPOTBUGS
+          # ==========================================================
           echo "<h2>🐛 SpotBugs – Posibles Bugs Reales</h2>" >> reporte_final.html
-          grep "<BugInstance" target/spotbugsXml.xml > sb_temp.txt || true
-          SB_COUNT=$(wc -l < sb_temp.txt)
 
-          if [ "$SB_COUNT" -eq 0 ]; then
-            echo "<p class='green'>Sin bugs detectados</p>" >> reporte_final.html
+          if ! grep -q "<BugInstance" target/spotbugsXml.xml; then
+            echo "<p class='ok'>✔ No se detectaron bugs.</p>" >> reporte_final.html
           else
-            echo "<p class='red'>Bugs detectados: $SB_COUNT</p>" >> reporte_final.html
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th><th>Recomendación</th></tr>" >> reporte_final.html
-            while IFS= read -r line; do
-              TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
-              CLASS=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p' | sed 's/\./\//g')
-              LINE=$(grep -A1 "$TYPE" target/spotbugsXml.xml | grep "<SourceLine" | head -1 | sed -n 's/.*start="\([0-9]*\)".*/\1/p')
-              RECOM="Revisar bug potencial y prevenir NPE o errores lógicos"
-              echo "<tr><td>$CLASS.java</td><td>$LINE</td><td>$TYPE</td><td>$RECOM</td></tr>" >> reporte_final.html
-            done < sb_temp.txt
+            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Tipo</th><th>Recomendación</th></tr>" >> reporte_final.html
+
+            grep "<BugInstance" -A2 target/spotbugsXml.xml | while read -r B; do
+              TYPE=$(echo "$B" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+              FILE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep "SourceLine" | sed -n 's/.*sourcefile="\([^"]*\)".*/\1/p' | head -1)
+              LINE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep "SourceLine" | sed -n 's/.*start="\([^"]*\)".*/\1/p' | head -1)
+
+              REC="Revisar posible bug reportado por SpotBugs."
+
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$TYPE</td><td>$REC</td></tr>" >> reporte_final.html
+            done
+
             echo "</table>" >> reporte_final.html
           fi
-
-          # -----------------------------
-          # Recomendaciones Generales
-          # -----------------------------
-          echo "<h2>💡 Recomendaciones Generales</h2>" >> reporte_final.html
-          echo "<ul>
-            <li>Divide Tasks muy largas en subtareas Screenplay.</li>
-            <li>Usa Page Objects limpios y descriptivos.</li>
-            <li>Evita duplicación en Steps/Interactions.</li>
-            <li>Aplica formateo automático (Ctrl + Alt + L en IntelliJ).</li>
-            <li>Revisa posibles NPE detectados por SpotBugs.</li>
-            <li>Mantén clases por debajo de 300 líneas para Screenplay.</li>
-          </ul>" >> reporte_final.html
 
           echo "</body></html>" >> reporte_final.html
 
-      # ----------------------------------------------------------------------
-      # 4. Subir reportes
-      # ----------------------------------------------------------------------
-      - name: Subir reportes originales
+      - name: Subir reporte HTML
         uses: actions/upload-artifact@v4
         with:
-          name: reportes_detallados
-          path: |
-            target/checkstyle-result.xml
-            target/pmd.xml
-            target/spotbugsXml.xml
-            target/pmd.html
-            target/site/spotbugs.html
-
-      - name: Subir reporte HTML embellecido
-        uses: actions/upload-artifact@v4
-        with:
-          name: reporte_analisis_embellecido
+          name: reporte_html
           path: reporte_final.html
+
+
