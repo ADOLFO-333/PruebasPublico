@@ -1,4 +1,4 @@
-name: Leer Código - Seguridad y Buenas Prácticas
+name: Analisis de Codigo - Seguridad y Buenas Prácticas
 
 on:
   workflow_dispatch:
@@ -6,9 +6,9 @@ on:
 jobs:
   validar_codigo:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -18,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Cache Maven
+      - name: Cache Maven dependencies
         uses: actions/cache@v3
         with:
           path: ~/.m2/repository
@@ -26,105 +26,100 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # -------------------------
-      # ANALIZADORES
-      # -------------------------
+      ###########################################################
+      # 1. Compilar proyecto
+      ###########################################################
+      - name: Compilar proyecto
+        run: mvn -q clean compile test-compile
+
+      ###########################################################
+      # 2. Ejecutar análisis
+      ###########################################################
       - name: Checkstyle
         run: mvn -q checkstyle:check || true
 
-      - name: PMD
+      - name: PMD Analysis
         run: mvn -q pmd:pmd || true
 
-      - name: SpotBugs
-        run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:spotbugs || true
+      - name: SpotBugs Analysis
+        run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
-      # -------------------------
-      # REPORTE HTML SIMPLE
-      # -------------------------
-      - name: Crear reporte HTML
+      ###########################################################
+      # 3. Generar Reporte HTML consolidado
+      ###########################################################
+      - name: Generar reporte HTML consolidado
+        shell: bash
         run: |
-          echo "<html><body style='font-family:Arial'>" > reporte.html
-          echo "<h1>Reporte de Calidad del Código</h1>" >> reporte.html
-
-
+          echo "<html><head><meta charset='UTF-8'><title>Reporte de Análisis</title>" > reporte.html
+          echo "<style>body{font-family:Arial;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:5px;} th{background:#eee;}</style>" >> reporte.html
+          echo "</head><body>" >> reporte.html
+          echo "<h1>Reporte Consolidado de Análisis de Código</h1>" >> reporte.html
+          
           #####################################################
           # CHECKSTYLE
           #####################################################
           echo "<h2>Checkstyle</h2>" >> reporte.html
 
           if grep -q "<error " target/checkstyle-result.xml; then
-
-            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte.html
 
             CURRENT_FILE=""
-
-            # Procesar XML línea por línea
             while IFS= read -r line; do
-
-              # Capturar nombre de archivo
               if echo "$line" | grep -q "<file name="; then
                 CURRENT_FILE=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
               fi
 
-              # Capturar errores
               if echo "$line" | grep -q "<error "; then
-                LINE=$(echo "$line" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
-                RAW_MSG=$(echo "$line" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
+                LINEA=$(echo "$line" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
+                MSG=$(echo "$line" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
 
-                # Mensaje amigable
-                MSG="$RAW_MSG"
-                if echo "$RAW_MSG" | grep -qi "Missing package-info"; then
-                  MSG="Agrega un archivo package-info.java para documentar el paquete."
-                elif echo "$RAW_MSG" | grep -qi "Missing a Javadoc"; then
-                  MSG="Agrega un comentario Javadoc explicando método o variable."
-                elif echo "$RAW_MSG" | grep -qi "Parameter"; then
-                  MSG="Convierte parámetros en 'final'."
-                elif echo "$RAW_MSG" | grep -qi "designed for extension"; then
-                  MSG="Considera marcar la clase o método como final."
-                fi
-
-                echo "<tr><td>$CURRENT_FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
+                echo "<tr><td>$CURRENT_FILE</td><td>$LINEA</td><td>$MSG</td></tr>" >> reporte.html
               fi
-
             done < target/checkstyle-result.xml
 
             echo "</table>" >> reporte.html
-
           else
-            echo "<p>✔ No se encontraron problemas.</p>" >> reporte.html
+            echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
           fi
 
-
           #####################################################
-          # PMD
+          # PMD (CORREGIDO)
           #####################################################
           echo "<h2>PMD</h2>" >> reporte.html
 
           if grep -q "<violation" target/pmd.xml; then
-            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
 
-            while IFS= read -r v; do
-              FILE=$(echo "$v" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
-              LINE=$(echo "$v" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
-              RAW_MSG=$(echo "$v" | sed -n 's/.*>\(.*\)<.*/\1/p')
-
-              MSG="$RAW_MSG"
-              if echo "$RAW_MSG" | grep -qi "Unused"; then
-                MSG="Eliminar import no utilizado."
-              elif echo "$RAW_MSG" | grep -qi "Unnecessary"; then
-                MSG="Eliminar código innecesario."
+            CURRENT_FILE=""
+            while IFS= read -r line; do
+              # Detectar archivo
+              if echo "$line" | grep -q "<file name="; then
+                CURRENT_FILE=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
               fi
 
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
+              # Detectar violación
+              if echo "$line" | grep -q "<violation"; then
+                LINEA=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+                RAW_MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<.*/\1/p')
 
-            done < <(grep "<violation" target/pmd.xml)
+                # Reglas de recomendación
+                MSG="$RAW_MSG"
+                if echo "$RAW_MSG" | grep -qi "Unused import"; then
+                  MSG="Elimina el import no utilizado."
+                elif echo "$RAW_MSG" | grep -qi "Unnecessary"; then
+                  MSG="Refactoriza para eliminar código o calificación innecesaria."
+                elif echo "$RAW_MSG" | grep -qi "Long"; then
+                  MSG="Reduce la longitud del método o clase para mejorar legibilidad."
+                fi
+
+                echo "<tr><td>$CURRENT_FILE</td><td>$LINEA</td><td>$MSG</td></tr>" >> reporte.html
+              fi
+            done < target/pmd.xml
 
             echo "</table>" >> reporte.html
-
           else
-            echo "<p>✔ Sin problemas.</p>" >> reporte.html
+            echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
           fi
-
 
           #####################################################
           # SPOTBUGS
@@ -132,30 +127,33 @@ jobs:
           echo "<h2>SpotBugs</h2>" >> reporte.html
 
           if grep -q "<BugInstance" target/spotbugsXml.xml; then
-            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th></tr>" >> reporte.html
 
-            while IFS= read -r bug; do
-              TYPE=$(echo "$bug" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+            CURRENT_FILE=""
+            while IFS= read -r line; do
+              if echo "$line" | grep -q "<SourceLine"; then
+                CURRENT_FILE=$(echo "$line" | sed -n 's/.*sourcepath="\([^"]*\)".*/\1/p')
+                LINEA=$(echo "$line" | sed -n 's/.*start="\([^"]*\)".*/\1/p')
+              fi
 
-              FILE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*sourcefile="\([^"]*\)".*/\1/p' | head -1)
-              LINE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*start="\([^"]*\)".*/\1/p' | head -1)
-
-              MSG="Posible bug ($TYPE). Revisar posible NPE o lógica incorrecta."
-
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
-            done < <(grep "<BugInstance" target/spotbugsXml.xml)
+              if echo "$line" | grep -q "<BugInstance"; then
+                BUG_TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+                echo "<tr><td>$CURRENT_FILE</td><td>$LINEA</td><td>$BUG_TYPE</td></tr>" >> reporte.html
+              fi
+            done < target/spotbugsXml.xml
 
             echo "</table>" >> reporte.html
-
           else
             echo "<p>✔ Sin bugs detectados.</p>" >> reporte.html
           fi
 
-
           echo "</body></html>" >> reporte.html
 
-      - name: Subir reporte HTML
+      ###########################################################
+      # 4. Subir artefactos
+      ###########################################################
+      - name: Subir reportes
         uses: actions/upload-artifact@v4
         with:
-          name: reporte_html
+          name: reporte_analisis
           path: reporte.html
