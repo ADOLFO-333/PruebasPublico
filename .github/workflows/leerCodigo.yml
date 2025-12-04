@@ -7,7 +7,7 @@ jobs:
   validar_codigo:
     name: Validación de Código
     runs-on: ubuntu-latest
-    timeout-minutes: 10   # <-- Límite de 10 minutos
+    timeout-minutes: 60   # <-- Límite de 60 minutos
 
     steps:
       - name: Checkout del repositorio
@@ -48,6 +48,7 @@ jobs:
 
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
+
 
 
 
