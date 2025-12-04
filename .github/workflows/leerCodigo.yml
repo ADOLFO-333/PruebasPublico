@@ -45,113 +45,114 @@ jobs:
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
       # ----------------------------------------------------------------------
-      # 3. Generar reporte HTML embellecido
+      # 3. Generar Reporte HTML Embellecido
       # ----------------------------------------------------------------------
-      - name: Generar reporte HTML
+      - name: Generar reporte HTML consolidado
         run: |
-          echo "<html><head><meta charset='UTF-8'><title>Reporte de Código</title>
-          <style>
-            body {font-family: Arial, sans-serif; margin: 20px;}
-            h2 {color: #2E86C1;}
-            table {border-collapse: collapse; width: 100%; margin-bottom: 20px;}
-            th, td {border: 1px solid #ddd; padding: 8px;}
-            th {background-color: #f2f2f2;}
-            tr:nth-child(even){background-color: #f9f9f9;}
-            tr:hover {background-color: #f1f1f1;}
-          </style>
-          </head><body>" > reporte.html
-
-          echo "<h1>Reporte Consolidado de Análisis de Código</h1>" >> reporte.html
-          echo "<p>Incluye Checkstyle, PMD y SpotBugs con ubicación y recomendaciones.</p>" >> reporte.html
+          echo "<html><head><meta charset='UTF-8'><title>Reporte de Análisis de Código</title></head><body>" > reporte.html
+          echo "<h1>🎯 Reporte Consolidado de Análisis de Código</h1>" >> reporte.html
+          echo "<p>Este informe resume los hallazgos de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>" >> reporte.html
           echo "<hr>" >> reporte.html
 
-          #####################################################
+          # =======================
           # CHECKSTYLE
-          #####################################################
-          echo "<h2>Checkstyle</h2>" >> reporte.html
+          # =======================
+          echo "<h2>🧹 Checkstyle – Formato y Estilo</h2>" >> reporte.html
           if grep -q "<error " target/checkstyle-result.xml; then
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Mensaje</th><th>Recomendación</th></tr>" >> reporte.html
-            grep "<error " target/checkstyle-result.xml | while read -r line; do
-              FILE=$(echo "$line" | sed -n 's/.*source="[^"]*".*sourcefile="\([^"]*\)".*/\1/p')
-              [ -z "$FILE" ] && FILE=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
-              LINE=$(echo "$line" | sed -n 's/.*line="\([0-9]*\)".*/\1/p')
-              MSG=$(echo "$line" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
-              RECO="Corrige el formato o estilo según Checkstyle."
-              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td><td>$RECO</td></tr>" >> reporte.html
-            done
+            echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Mensaje</th><th>Recomendación</th></tr>" >> reporte.html
+            awk '
+              /<file name="/ { gsub(/.*name="|">/, ""); file=$0 }
+              /<error / {
+                match($0, /line="([0-9]+)"/, a);
+                line=a[1];
+                match($0, /message="([^"]+)"/, b);
+                msg=b[1];
+                reco="Corrige el formato o estilo según Checkstyle.";
+                print "<tr><td>"file"</td><td>"line"</td><td>"msg"</td><td>"reco"</td></tr>"
+              }
+            ' target/checkstyle-result.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
             echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
           fi
+          echo "<hr>" >> reporte.html
 
-          #####################################################
+          # =======================
           # PMD
-          #####################################################
-          echo "<h2>PMD</h2>" >> reporte.html
-          if grep -q "<violation" target/pmd.xml; then
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
-            CURRENT_FILE=""
-            while IFS= read -r line; do
-              if echo "$line" | grep -q "<file name="; then
-                CURRENT_FILE=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
-              fi
-              if echo "$line" | grep -q "<violation"; then
-                LINEA=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
-                RAW_MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<\/violation>.*/\1/p' | sed 's/^[ \t]*//;s/[ \t]*$//')
-                if echo "$RAW_MSG" | grep -qi "Unused import"; then
-                  RECO="Remueve el import no utilizado."
-                elif echo "$RAW_MSG" | grep -qi "Unnecessary"; then
-                  RECO="Elimina código repetido o calificadores innecesarios."
-                elif echo "$RAW_MSG" | grep -qi "FullyQualifiedName"; then
-                  RECO="Quita el nombre completo en la referencia: ya está importado."
-                else
-                  RECO="Revisa según la recomendación automática de PMD."
-                fi
-                echo "<tr><td>$CURRENT_FILE</td><td>$LINEA</td><td>$RECO</td></tr>" >> reporte.html
-              fi
-            done < target/pmd.xml
+          # =======================
+          echo "<h2>📏 PMD – Buenas Prácticas & Complejidad</h2>" >> reporte.html
+          if grep -q "<violation " target/pmd.xml; then
+            echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Mensaje</th><th>Recomendación</th></tr>" >> reporte.html
+            awk -F'"' '
+              /<file name/ {file=$2}
+              /<violation / {
+                split($0,a,"beginline=\""); split(a[2],b,"\""); line=b[1];
+                match($0, />[^<]+/, m);
+                msg=substr(m[0],2);
+                reco="Revisa buenas prácticas y complejidad según PMD.";
+                print "<tr><td>"file"</td><td>"line"</td><td>"msg"</td><td>"reco"</td></tr>"
+              }
+            ' target/pmd.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
             echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
           fi
+          echo "<hr>" >> reporte.html
 
-          #####################################################
+          # =======================
           # SPOTBUGS
-          #####################################################
-          echo "<h2>SpotBugs</h2>" >> reporte.html
+          # =======================
+          echo "<h2>🐛 SpotBugs – Posibles Bugs Reales</h2>" >> reporte.html
           if grep -q "<BugInstance" target/spotbugsXml.xml; then
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th></tr>" >> reporte.html
-            grep "<BugInstance" target/spotbugsXml.xml | while read -r line; do
-              TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
-              CLASS=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p' | sed 's/\./\//g')
-              LINE=$(grep -A1 "$TYPE" target/spotbugsXml.xml | grep "<SourceLine" | head -1 | sed -n 's/.*start="\([0-9]*\)".*/\1/p')
-              echo "<tr><td>$CLASS.java</td><td>$LINE</td><td>$TYPE</td></tr>" >> reporte.html
-            done
+            echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th><th>Recomendación</th></tr>" >> reporte.html
+            awk -F'"' '
+              /<Class / {class=$2}
+              /<BugInstance / {
+                match($0, /type="([^"]+)"/, a);
+                tipo=a[1];
+                reco="Revisa posible bug y aplica corrección según SpotBugs.";
+                getline
+                match($0, /start="([0-9]+)"/, b);
+                line=b[1];
+                print "<tr><td>"class"</td><td>"line"</td><td>"tipo"</td><td>"reco"</td></tr>"
+              }
+            ' target/spotbugsXml.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
             echo "<p>✔ Sin bugs detectados.</p>" >> reporte.html
           fi
 
-          #####################################################
-          # RECOMENDACIONES GENERALES
-          #####################################################
-          echo "<h2>Recomendaciones Generales</h2>" >> reporte.html
+          # =======================
+          # Recomendaciones finales
+          # =======================
+          echo "<hr>" >> reporte.html
+          echo "<h2>💡 Recomendaciones Generales</h2>" >> reporte.html
           echo "<ul>" >> reporte.html
           echo "<li>Divide Tasks muy largas en subtareas Screenplay.</li>" >> reporte.html
           echo "<li>Usa Page Objects limpios y descriptivos.</li>" >> reporte.html
           echo "<li>Evita duplicación en Steps/Interactions.</li>" >> reporte.html
-          echo "<li>Aplica formateo automático en IntelliJ (Ctrl + Alt + L).</li>" >> reporte.html
+          echo "<li>Aplica formateo automático (Ctrl + Alt + L en IntelliJ).</li>" >> reporte.html
           echo "<li>Revisa posibles NPE detectados por SpotBugs.</li>" >> reporte.html
           echo "<li>Mantén clases por debajo de 300 líneas para Screenplay.</li>" >> reporte.html
           echo "</ul>" >> reporte.html
-
           echo "</body></html>" >> reporte.html
 
       # ----------------------------------------------------------------------
-      # 4. Subir reporte HTML
+      # 4. Subir resultados
       # ----------------------------------------------------------------------
-      - name: Subir reporte HTML
+      - name: Subir reportes originales
         uses: actions/upload-artifact@v4
         with:
-          name: reporte_analisis
+          name: reportes_detallados
+          path: |
+            target/checkstyle-result.xml
+            target/pmd.xml
+            target/spotbugsXml.xml
+            target/pmd.html
+            target/site/spotbugs.html
+
+      - name: Subir reporte embellecido
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte_analisis_embellecido
           path: reporte.html
