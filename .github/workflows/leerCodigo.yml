@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -17,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Cache Maven dependencies
+      - name: Cache Maven
         uses: actions/cache@v3
         with:
           path: ~/.m2/repository
@@ -25,128 +26,114 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Ejecutar Checkstyle
+      # -------------------------
+      # EJECUCIÓN DE ANALIZADORES
+      # -------------------------
+      - name: Checkstyle
         run: mvn -q checkstyle:check || true
 
-      - name: Ejecutar PMD
+      - name: PMD
         run: mvn -q pmd:pmd || true
 
-      - name: Ejecutar SpotBugs
+      - name: SpotBugs
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:spotbugs || true
 
-      - name: Generar reporte HTML consolidado
+      # -------------------------
+      # GENERACIÓN REPORTE SIMPLE
+      # -------------------------
+      - name: Crear reporte simple HTML
         run: |
-          # Crear HTML base con EOF
-          cat << 'EOF' > reporte_final.html
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: Arial; margin: 20px; }
-    h1 { color: #003366; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-    th { background: #004A99; color: white; padding: 8px; }
-    td { border: 1px solid #ddd; padding: 6px; }
-    tr:nth-child(even) { background: #f2f2f2; }
-  </style>
-</head>
-<body>
-<h1>🔎 Reporte Consolidado de Calidad</h1>
-EOF
+          echo "<html><body style='font-family:Arial'>" > reporte.html
+          echo "<h1>Reporte de Calidad del Código</h1>" >> reporte.html
 
-          #
+
+          ###################################
           # CHECKSTYLE
-          #
-          echo "<h2>🧹 Checkstyle</h2>" >> reporte_final.html
-          if [ -f target/checkstyle-result.xml ]; then
-            COUNT=$(xmllint --xpath "count(/checkstyle/file/error)" target/checkstyle-result.xml 2>/dev/null)
-          else
-            COUNT=0
-          fi
+          ###################################
+          echo "<h2>Checkstyle</h2>" >> reporte.html
 
-          if [ "$COUNT" -eq 0 ]; then
-            echo "<p>No se detectaron problemas.</p>" >> reporte_final.html
-          else
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
+          if grep -q "<error " target/checkstyle-result.xml; then
+            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            grep "<error " target/checkstyle-result.xml | while read -r line; do
+              FILE=$(echo "$line" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
+              LINE=$(echo "$line" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
+              MSG=$(echo "$line" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
 
-            xmllint --xpath "//file" target/checkstyle-result.xml 2>/dev/null |
-            tr '<' '\n<' | grep "<file" |
-            while read -r FILELINE; do
-              FILEPATH=$(echo "$FILELINE" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
-
-              xmllint --xpath "//file[@name=\"$FILEPATH\"]/error" target/checkstyle-result.xml 2>/dev/null |
-              tr '<' '\n<' | grep "<error" |
-              while read -r ERR; do
-                LINE=$(echo "$ERR" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
-                MSG=$(echo "$ERR" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
-                echo "<tr><td>$FILEPATH</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
-              done
-            done
-
-            echo "</table>" >> reporte_final.html
-          fi
-
-          #
-          # PMD
-          #
-          echo "<h2>📏 PMD</h2>" >> reporte_final.html
-
-          if [ -f target/pmd.xml ]; then
-            COUNT=$(xmllint --xpath "count(/pmd/file/violation)" target/pmd.xml 2>/dev/null)
-          else
-            COUNT=0
-          fi
-
-          if [ "$COUNT" -eq 0 ]; then
-            echo "<p>No se detectaron violaciones.</p>" >> reporte_final.html
-          else
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
-
-            xmllint --xpath "//file" target/pmd.xml 2>/dev/null |
-            tr '<' '\n<' | grep "<file" |
-            while read -r BLOCK; do
-              FILE=$(echo "$BLOCK" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
-
-              xmllint --xpath "//file[@name=\"$FILE\"]/violation" target/pmd.xml 2>/dev/null |
-              tr '<' '\n<' | grep "<violation" |
-              while read -r V; do
-                LINE=$(echo "$V" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
-                MSG=$(echo "$V" | sed -n 's/.*>\(.*\)<.*/\1/p')
-                echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
-              done
-            done
-
-            echo "</table>" >> reporte_final.html
-          fi
-
-          #
-          # SPOTBUGS
-          #
-          echo "<h2>🐛 SpotBugs</h2>" >> reporte_final.html
-
-          if ! grep -q "<BugInstance" target/spotbugsXml.xml 2>/dev/null; then
-            echo "<p>No se detectaron bugs.</p>" >> reporte_final.html
-          else
-            echo "<table><tr><th>Archivo</th><th>Línea</th><th>Tipo</th></tr>" >> reporte_final.html
-
-            grep "<BugInstance" -A2 target/spotbugsXml.xml |
-            while read -r LINE; do
-              TYPE=$(echo "$LINE" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
-              FILE=$(grep -A3 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*sourcefile="\([^"]*\)".*/\1/p' | head -1)
-              LINENUM=$(grep -A3 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*start="\([^"]*\)".*/\1/p' | head -1)
-
-              if [ ! -z "$TYPE" ]; then
-                echo "<tr><td>$FILE</td><td>$LINENUM</td><td>$TYPE</td></tr>" >> reporte_final.html
+              # Resumen entendible
+              if echo "$MSG" | grep -qi "Missing package-info"; then
+                MSG="Agrega un archivo package-info.java para documentar el paquete."
+              elif echo "$MSG" | grep -qi "Missing a Javadoc"; then
+                MSG="Agrega un comentario Javadoc explicando el método o variable."
+              elif echo "$MSG" | grep -qi "Parameter"; then
+                MSG="Convierte parámetros en 'final' para mayor seguridad."
+              else
+                MSG="Revisar formato o estilo según Checkstyle."
               fi
-            done
 
-            echo "</table>" >> reporte_final.html
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
+            done
+            echo "</table>" >> reporte.html
+          else
+            echo "<p>✔ No se encontraron problemas.</p>" >> reporte.html
           fi
 
-          echo "</body></html>" >> reporte_final.html
+
+          ###################################
+          # PMD
+          ###################################
+          echo "<h2>PMD</h2>" >> reporte.html
+
+          if grep -q "<violation" target/pmd.xml; then
+            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            grep "<violation" target/pmd.xml | while read -r v; do
+              FILE=$(echo "$v" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
+              LINE=$(echo "$v" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+              MSG=$(echo "$v" | sed -n 's/.*>\(.*\)<.*/\1/p')
+
+              # Simplificar mensaje
+              if echo "$MSG" | grep -qi "Unused"; then
+                MSG="Eliminar import no utilizado."
+              elif echo "$MSG" | grep -qi "Unnecessary"; then
+                MSG="Simplificar código eliminando elementos innecesarios."
+              else
+                MSG="Optimizar código según PMD."
+              fi
+
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
+            done
+            echo "</table>" >> reporte.html
+          else
+            echo "<p>✔ No se encontraron problemas.</p>" >> reporte.html
+          fi
+
+
+          ###################################
+          # SPOTBUGS
+          ###################################
+          echo "<h2>SpotBugs</h2>" >> reporte.html
+
+          if grep -q "<BugInstance" target/spotbugsXml.xml; then
+            echo "<table border='1' cellpadding='5'><tr><th>Archivo</th><th>Línea</th><th>Recomendación</th></tr>" >> reporte.html
+            grep "<BugInstance" -n target/spotbugsXml.xml | while read -r b; do
+              TYPE=$(echo "$b" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+
+              # Buscar el SourceLine asociado
+              FILE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*sourcefile="\([^"]*\)".*/\1/p' | head -1)
+              LINE=$(grep -A2 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*start="\([^"]*\)".*/\1/p' | head -1)
+
+              MSG="Posible bug: $TYPE (revisar lógica o posibles NPE)"
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte.html
+            done
+            echo "</table>" >> reporte.html
+          else
+            echo "<p>✔ No se encontraron bugs.</p>" >> reporte.html
+          fi
+
+
+          echo "</body></html>" >> reporte.html
 
       - name: Subir reporte HTML
         uses: actions/upload-artifact@v4
         with:
           name: reporte_html
-          path: reporte_final.html
+          path: reporte.html
