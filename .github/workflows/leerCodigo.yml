@@ -1,12 +1,12 @@
 name: Leer Código - Seguridad y Buenas Prácticas
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Permite ejecutar manualmente desde GitHub
 
 jobs:
   validar_codigo:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 30  # Ajusta según el tamaño de tu proyecto
 
     steps:
       # ------------------------------
@@ -94,12 +94,12 @@ EOF
           echo "<li>SpotBugs: $SB_COUNT bugs</li>" >> reporte_final.html
           echo "</ul>" >> reporte_final.html
 
-          # ----- Función para mapear mensaje amigable -----
+          # ----- Función para mensaje amigable -----
           explain() {
             case "$1" in
-              "Variable not used" ) echo "Variable declarada pero no usada. Ejemplo: eliminar la variable." ;;
-              "Null pointer" ) echo "Posible NullPointerException. Ejemplo: verificar null antes de usar." ;;
-              * ) echo "Verificar este error según la regla correspondiente." ;;
+              *unused* ) echo "Variable declarada pero no usada. Ejemplo: eliminarla." ;;
+              *NullPointer* ) echo "Posible NullPointerException. Verifica null antes de usar." ;;
+              * ) echo "Revisa este error según la regla correspondiente." ;;
             esac
           }
 
