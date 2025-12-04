@@ -34,29 +34,30 @@ jobs:
       - name: Ejecutar SpotBugs
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:spotbugs || true
 
-      # ==========================================================
-      # GENERAR REPORTE HTML FUNCIONAL
-      # ==========================================================
-      - name: Generar reporte HTML consolidado funcional
+      - name: Generar reporte HTML consolidado
         run: |
-          echo "<html><head><meta charset='UTF-8'>
-          <style>
-            body { font-family: Arial; margin: 20px; }
-            h1 { color: #003366; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-            th { background: #004A99; color: white; padding: 8px; }
-            td { border: 1px solid #ddd; padding: 6px; }
-            tr:nth-child(even) { background: #f2f2f2; }
-          </style>
-          </head><body>" > reporte_final.html
+          # Crear HTML base con EOF
+          cat << 'EOF' > reporte_final.html
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    h1 { color: #003366; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+    th { background: #004A99; color: white; padding: 8px; }
+    td { border: 1px solid #ddd; padding: 6px; }
+    tr:nth-child(even) { background: #f2f2f2; }
+  </style>
+</head>
+<body>
+<h1>🔎 Reporte Consolidado de Calidad</h1>
+EOF
 
-          echo "<h1>🔎 Reporte Consolidado de Calidad</h1>" >> reporte_final.html
-
-          # ===========================
+          #
           # CHECKSTYLE
-          # ===========================
+          #
           echo "<h2>🧹 Checkstyle</h2>" >> reporte_final.html
-
           if [ -f target/checkstyle-result.xml ]; then
             COUNT=$(xmllint --xpath "count(/checkstyle/file/error)" target/checkstyle-result.xml 2>/dev/null)
           else
@@ -69,19 +70,15 @@ jobs:
             echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
 
             xmllint --xpath "//file" target/checkstyle-result.xml 2>/dev/null |
-            tr '<' '\n<' |
-            grep "<file" |
+            tr '<' '\n<' | grep "<file" |
             while read -r FILELINE; do
-
               FILEPATH=$(echo "$FILELINE" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
 
               xmllint --xpath "//file[@name=\"$FILEPATH\"]/error" target/checkstyle-result.xml 2>/dev/null |
-              tr '<' '\n<' |
-              grep "<error" |
+              tr '<' '\n<' | grep "<error" |
               while read -r ERR; do
                 LINE=$(echo "$ERR" | sed -n 's/.*line="\([^"]*\)".*/\1/p')
                 MSG=$(echo "$ERR" | sed -n 's/.*message="\([^"]*\)".*/\1/p')
-
                 echo "<tr><td>$FILEPATH</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
               done
             done
@@ -89,9 +86,9 @@ jobs:
             echo "</table>" >> reporte_final.html
           fi
 
-          # ===========================
+          #
           # PMD
-          # ===========================
+          #
           echo "<h2>📏 PMD</h2>" >> reporte_final.html
 
           if [ -f target/pmd.xml ]; then
@@ -106,18 +103,15 @@ jobs:
             echo "<table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
 
             xmllint --xpath "//file" target/pmd.xml 2>/dev/null |
-            tr '<' '\n<' |
-            grep "<file" |
+            tr '<' '\n<' | grep "<file" |
             while read -r BLOCK; do
               FILE=$(echo "$BLOCK" | sed -n 's/.*name="\([^"]*\)".*/\1/p')
 
               xmllint --xpath "//file[@name=\"$FILE\"]/violation" target/pmd.xml 2>/dev/null |
-              tr '<' '\n<' |
-              grep "<violation" |
+              tr '<' '\n<' | grep "<violation" |
               while read -r V; do
                 LINE=$(echo "$V" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
                 MSG=$(echo "$V" | sed -n 's/.*>\(.*\)<.*/\1/p')
-
                 echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
               done
             done
@@ -125,9 +119,9 @@ jobs:
             echo "</table>" >> reporte_final.html
           fi
 
-          # ===========================
+          #
           # SPOTBUGS
-          # ===========================
+          #
           echo "<h2>🐛 SpotBugs</h2>" >> reporte_final.html
 
           if ! grep -q "<BugInstance" target/spotbugsXml.xml 2>/dev/null; then
@@ -138,7 +132,6 @@ jobs:
             grep "<BugInstance" -A2 target/spotbugsXml.xml |
             while read -r LINE; do
               TYPE=$(echo "$LINE" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
-
               FILE=$(grep -A3 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*sourcefile="\([^"]*\)".*/\1/p' | head -1)
               LINENUM=$(grep -A3 "$TYPE" target/spotbugsXml.xml | grep SourceLine | sed -n 's/.*start="\([^"]*\)".*/\1/p' | head -1)
 
