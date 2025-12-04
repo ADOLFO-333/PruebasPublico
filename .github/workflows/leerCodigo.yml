@@ -26,15 +26,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # ----------------------------------------------------------------------
+      # -------------------------------------------------------
       # 1. Compilar proyecto
-      # ----------------------------------------------------------------------
+      # -------------------------------------------------------
       - name: Compilar proyecto
         run: mvn -q clean compile test-compile
 
-      # ----------------------------------------------------------------------
-      # 2. Ejecutar análisis de código (solo Checkstyle, PMD y SpotBugs)
-      # ----------------------------------------------------------------------
+      # -------------------------------------------------------
+      # 2. Ejecutar análisis de código
+      # -------------------------------------------------------
       - name: Checkstyle
         run: mvn -q checkstyle:check || true
 
@@ -44,11 +44,89 @@ jobs:
       - name: SpotBugs Analysis
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
-      # ----------------------------------------------------------------------
+      # -------------------------------------------------------
       # 3. Generar reporte HTML embellecido
-      # ----------------------------------------------------------------------
+      # -------------------------------------------------------
       - name: Generar reporte HTML embellecido
         run: |
-          echo "<html><head>
-          <meta charset='UT
+          cat << 'EOF' > reporte_final.html
+          <html>
+          <head>
+            <meta charset='UTF-8'>
+            <title>Reporte de Análisis de Código</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; background: #f7f7f7; }
+              h1 { color: #1b4de4; }
+              h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 4px; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              th { background: #1b4de4; color: white; padding: 8px; }
+              td { background: #fff; padding: 8px; border-bottom: 1px solid #ddd; }
+              .ok { color: green; font-weight: bold; }
+              .warn { color: orange; font-weight: bold; }
+              .err { color: red; font-weight: bold; }
+              .section { margin-top: 30px; }
+            </style>
+          </head>
+          <body>
+            <h1>📊 Reporte Consolidado de Análisis de Código</h1>
+            <p>Este reporte incluye resultados de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>
+          EOF
 
+          # ===== Checkstyle =====
+          grep "<error " target/checkstyle-result.xml > cs_temp.txt || true
+          CS_COUNT=$(wc -l < cs_temp.txt)
+          if [ "$CS_COUNT" -eq 0 ]; then
+            echo "<div class='section'><h2>🧹 Checkstyle</h2><p class='ok'>🟢 Sin problemas detectados.</p></div>" >> reporte_final.html
+          else
+            echo "<div class='section'><h2>🧹 Checkstyle</h2><p class='err'>🔴 $CS_COUNT problemas detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
+            while IFS= read -r line; do
+              FILE=$(echo "$line" | sed -n 's/.*source="\(.*\)".*/\1/p')
+              LINE=$(echo "$line" | sed -n 's/.*line="\([0-9]*\)".*/\1/p')
+              MSG=$(echo "$line" | sed -n 's/.*message="\(.*\)".*/\1/p')
+              echo "<tr><td>$FILE</td><td>$LINE</td><td>$MSG</td></tr>" >> reporte_final.html
+            done < cs_temp.txt
+            echo "</table></div>" >> reporte_final.html
+          fi
+
+          # ===== PMD =====
+          grep "<violation" target/pmd.xml > pmd_temp.txt || true
+          PMD_COUNT=$(wc -l < pmd_temp.txt)
+          if [ "$PMD_COUNT" -eq 0 ]; then
+            echo "<div class='section'><h2>📏 PMD</h2><p class='ok'>🟢 Sin problemas detectados.</p></div>" >> reporte_final.html
+          else
+            echo "<div class='section'><h2>📏 PMD</h2><p class='warn'>🟠 $PMD_COUNT problemas detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Descripción</th></tr>" >> reporte_final.html
+            while IFS= read -r line; do
+              FILE=$(echo "$line" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
+              BEGIN=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+              MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<.*/\1/p')
+              echo "<tr><td>$FILE</td><td>$BEGIN</td><td>$MSG</td></tr>" >> reporte_final.html
+            done < pmd_temp.txt
+            echo "</table></div>" >> reporte_final.html
+          fi
+
+          # ===== SpotBugs =====
+          grep "<BugInstance" target/spotbugsXml.xml > sb_temp.txt || true
+          SB_COUNT=$(wc -l < sb_temp.txt)
+          if [ "$SB_COUNT" -eq 0 ]; then
+            echo "<div class='section'><h2>🐛 SpotBugs</h2><p class='ok'>🟢 Sin bugs detectados.</p></div>" >> reporte_final.html
+          else
+            echo "<div class='section'><h2>🐛 SpotBugs</h2><p class='err'>🔴 $SB_COUNT bugs detectados.</p><table><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th></tr>" >> reporte_final.html
+            while IFS= read -r line; do
+              TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+              CLASS=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p' | sed 's/\./\//g')
+              LINE=$(grep -A1 "$TYPE" target/spotbugsXml.xml | grep "<SourceLine" | head -1 | sed -n 's/.*start="\([0-9]*\)".*/\1/p')
+              echo "<tr><td>$CLASS.java</td><td>$LINE</td><td>$TYPE</td></tr>" >> reporte_final.html
+            done < sb_temp.txt
+            echo "</table></div>" >> reporte_final.html
+          fi
+
+          echo "</body></html>" >> reporte_final.html
+
+      # -------------------------------------------------------
+      # 4. Subir reporte final HTML
+      # -------------------------------------------------------
+      - name: Subir reporte HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte_html
+          path: reporte_final.html
