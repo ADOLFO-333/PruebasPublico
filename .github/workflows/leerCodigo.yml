@@ -36,10 +36,10 @@ jobs:
 
       # ---------- OWASP DEPENDENCY CHECK ----------
       - name: Escaneo de vulnerabilidades (OWASP Dependency Check)
-        uses: dependency-check/Dependency-Check_Action@v4.1.0
+        uses: dependency-check/dependency-check-action@v2
         with:
           project: "LoginApp"
-          path: "."
+          scan: "."
           format: "ALL"
 
       - name: Guardar reporte OWASP
@@ -56,3 +56,4 @@ jobs:
 
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
+
