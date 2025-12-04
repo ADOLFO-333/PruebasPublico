@@ -26,10 +26,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Compilar proyecto (solo compile + test-compile)
+      # ----------------------------------------------------------------------
+      # 1. Compilación del Proyecto
+      # ----------------------------------------------------------------------
+      - name: Compilar proyecto
         run: mvn -q clean compile test-compile
 
-      - name: Analizar buenas prácticas (Checkstyle)
+      # ----------------------------------------------------------------------
+      # 2. Análisis de Código
+      # ----------------------------------------------------------------------
+
+      - name: Checkstyle
         run: mvn -q checkstyle:check || true
 
       - name: PMD Analysis
@@ -38,18 +45,126 @@ jobs:
       - name: SpotBugs Analysis
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
-      - name: Analizar dependencias (Maven Analyze)
-        run: mvn -q dependency:analyze || true
+      # ----------------------------------------------------------------------
+      # 3. REPORTE CONSOLIDADO AVANZADO Y EMBELLECIDO
+      # ----------------------------------------------------------------------
+      - name: Generar reporte consolidado embellecido
+        run: |
+          echo "# 🎯 Reporte Consolidado de Análisis de Código" > reporte_final.md
+          echo "" >> reporte_final.md
+          echo "Este informe resume los hallazgos de **Checkstyle**, **PMD** y **SpotBugs**." >> reporte_final.md
+          echo "Incluye ubicación exacta, descripción del problema y recomendaciones de solución." >> reporte_final.md
+          echo "---" >> reporte_final.md
+          echo "" >> reporte_final.md
 
-      # ⭐ Subir reportes para revisión
-      - name: Subir reportes de análisis
+          # =======================
+          # EXTRAER CHECKSTYLE
+          # =======================
+          echo "## 🧹 Checkstyle – Formato y Estilo" >> reporte_final.md
+          grep "<error " target/checkstyle-result.xml > cs_temp.txt || true
+          CS_COUNT=$(wc -l < cs_temp.txt)
+
+          if [ "$CS_COUNT" -eq 0 ]; then
+            echo "- 🟢 **Sin problemas detectados**" >> reporte_final.md
+          else
+            echo "- 🔴 Problemas detectados: **$CS_COUNT**" >> reporte_final.md
+            echo "" >> reporte_final.md
+            echo "| Archivo | Línea | Descripción |" >> reporte_final.md
+            echo "|---------|--------|-------------|" >> reporte_final.md
+
+            while IFS= read -r line; do
+              FILE=$(echo "$line" | sed -n 's/.*source="\(.*\)".*/\1/p')
+              MSG=$(echo "$line" | sed -n 's/.*message="\(.*\)".*/\1/p')
+              LINE=$(echo "$line" | sed -n 's/.*line="\([0-9]*\)".*/\1/p')
+
+              echo "| $FILE | $LINE | $MSG |" >> reporte_final.md
+            done < cs_temp.txt
+          fi
+
+          echo "" >> reporte_final.md
+          echo "---" >> reporte_final.md
+
+          # =======================
+          # EXTRAER PMD
+          # =======================
+          echo "## 📏 PMD – Buenas Prácticas & Complejidad" >> reporte_final.md
+          grep "<violation" target/pmd.xml > pmd_temp.txt || true
+          PMD_COUNT=$(wc -l < pmd_temp.txt)
+
+          if [ "$PMD_COUNT" -eq 0 ]; then
+            echo "- 🟢 **Sin problemas detectados**" >> reporte_final.md
+          else
+            echo "- 🟠 Problemas detectados: **$PMD_COUNT**" >> reporte_final.md
+            echo "" >> reporte_final.md
+            echo "| Archivo | Línea | Descripción |" >> reporte_final.md
+            echo "|---------|--------|-------------|" >> reporte_final.md
+
+            while IFS= read -r line; do
+              FILE=$(echo "$line" | sed -n 's/.*filename="\([^"]*\)".*/\1/p')
+              BEGIN=$(echo "$line" | sed -n 's/.*beginline="\([^"]*\)".*/\1/p')
+              MSG=$(echo "$line" | sed -n 's/.*>\(.*\)<.*/\1/p')
+
+              echo "| $FILE | $BEGIN | $MSG |" >> reporte_final.md
+            done < pmd_temp.txt
+          fi
+
+          echo "" >> reporte_final.md
+          echo "---" >> reporte_final.md
+
+          # =======================
+          # EXTRAER SPOTBUGS
+          # =======================
+          echo "## 🐛 SpotBugs – Posibles Bugs Reales" >> reporte_final.md
+          grep "<BugInstance" target/spotbugsXml.xml > sb_temp.txt || true
+          SB_COUNT=$(wc -l < sb_temp.txt)
+
+          if [ "$SB_COUNT" -eq 0 ]; then
+            echo "- 🟢 **Sin bugs detectados**" >> reporte_final.md
+          else
+            echo "- 🔴 Bugs detectados: **$SB_COUNT**" >> reporte_final.md
+            echo "" >> reporte_final.md
+            echo "| Archivo | Línea | Tipo de Bug |" >> reporte_final.md
+            echo "|---------|--------|-------------|" >> reporte_final.md
+
+            while IFS= read -r line; do
+              TYPE=$(echo "$line" | sed -n 's/.*type="\([^"]*\)".*/\1/p')
+              CLASS=$(echo "$line" | sed -n 's/.*classname="\([^"]*\)".*/\1/p' | sed 's/\./\//g')
+              LINE=$(grep -A1 "$TYPE" target/spotbugsXml.xml | grep "<SourceLine" | head -1 | sed -n 's/.*start="\([0-9]*\)".*/\1/p')
+
+              echo "| $CLASS.java | $LINE | $TYPE |" >> reporte_final.md
+            done < sb_temp.txt
+          fi
+
+          echo "" >> reporte_final.md
+          echo "---" >> reporte_final.md
+
+          # =======================
+          # RECOMENDACIONES FINALES
+          # =======================
+          echo "## 💡 Recomendaciones Generales" >> reporte_final.md
+          echo "- Divide Tasks muy largas en subtareas Screenplay." >> reporte_final.md
+          echo "- Usa Page Objects limpios y descriptivos." >> reporte_final.md
+          echo "- Evita duplicación en Steps/Interactions." >> reporte_final.md
+          echo "- Aplica formateo automático (Ctrl + Alt + L en IntelliJ)." >> reporte_final.md
+          echo "- Revisa posibles NPE detectados por SpotBugs." >> reporte_final.md
+          echo "- Mantén clases por debajo de 300 líneas para Screenplay." >> reporte_final.md
+
+      # ----------------------------------------------------------------------
+      # 4. SUBIR RESULTADOS
+      # ----------------------------------------------------------------------
+      - name: Subir reportes originales
         uses: actions/upload-artifact@v4
         with:
-          name: reportes-analisis
+          name: reportes_detallados
           path: |
             target/checkstyle-result.xml
             target/pmd.xml
-            target/pmd.html
             target/spotbugsXml.xml
+            target/pmd.html
             target/site/spotbugs.html
-        if: always()
+
+      - name: Subir reporte embellecido
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte_analisis_embellecido
+          path: reporte_final.md
