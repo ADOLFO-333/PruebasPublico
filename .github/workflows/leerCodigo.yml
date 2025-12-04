@@ -1,10 +1,6 @@
 name: Leer Código - Seguridad y Buenas Prácticas
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:   # <-- Permite ejecución manual
 
 jobs:
@@ -56,4 +52,5 @@ jobs:
 
       - name: Ejecutar análisis CodeQL
         uses: github/codeql-action/analyze@v3
+
 
