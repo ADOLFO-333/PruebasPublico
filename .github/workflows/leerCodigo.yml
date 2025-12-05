@@ -1,23 +1,47 @@
+# ----------------------------------------------------------------------
+# Se le asigna un nombre al workflow
+# ----------------------------------------------------------------------
 name: Leer Código - Seguridad y Buenas Prácticas
 
+# ----------------------------------------------------------------------
+# Se ejecuta manualmente con el boton workflow
+# ----------------------------------------------------------------------
 on:
   workflow_dispatch:
 
 jobs:
   validar_codigo:
+    # ----------------------------------------------------------------------
+    # Se ejecuta en un runner Ubuntu proporcionado por GitHub la ultima version
+    # ----------------------------------------------------------------------
     runs-on: ubuntu-latest
+    # ----------------------------------------------------------------------
+    # tiene un tiempo maximo de 30 minutos por si no responde
+    # ----------------------------------------------------------------------
     timeout-minutes: 30
 
     steps:
+      # ----------------------------------------------------------------------
+      # 1. Obtener el código fuente
+      # clonamos el repositorio para poder trabajar con el con un action
+      # ----------------------------------------------------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # ----------------------------------------------------------------------
+      # 2. Configurar Java
+      # con un action instalamos y configuramos Java 17 porque el proyecto Serenity + Screenplay requiere JDK 17
+      # ----------------------------------------------------------------------
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # ----------------------------------------------------------------------
+      # 3. Cache de dependencias Maven
+      # usamos un action que permite que las dependencias Maven no se descarguen cada vez, y sean guardadas en cache para reducir tiempos
+      # ----------------------------------------------------------------------
       - name: Cache Maven dependencies
         uses: actions/cache@v3
         with:
@@ -25,39 +49,50 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-
+        
       # ----------------------------------------------------------------------
-      # 1. Compilación del Proyecto
+      # 4. Compilación del proyecto
+      # Compila el código fuente 
       # ----------------------------------------------------------------------
       - name: Compilar proyecto
         run: mvn -q clean compile test-compile
+        
 
       # ----------------------------------------------------------------------
-      # 2. Análisis de Código
+      # 5. Análisis de código estático
+      # Checkstyle: analiza estilo de código y convenciones de Java
+      # PMD: Detectar malas prácticas, código innecesariamente complejo o redundante
+      # SpotBugs: detecta posibles bugs reales, como Null Pointer Exception o problemas de concurrencia
+      # Se usa || true para que el pipeline no falle si hay errores devuelva exitoso y continue con la revision
       # ----------------------------------------------------------------------
+      
       - name: Checkstyle
-        run: mvn -q checkstyle:check || true
-
+        run: mvn -q checkstyle:check || true        
+     
       - name: PMD Analysis
         run: mvn -q pmd:pmd || true
-
+      
       - name: SpotBugs Analysis
         run: mvn -q com.github.spotbugs:spotbugs-maven-plugin:check || true
 
       # ----------------------------------------------------------------------
-      # 3. Generar Reporte HTML Embellecido
+      # 6. Generar un reporte HTML 
       # ----------------------------------------------------------------------
       - name: Generar reporte HTML consolidado
         run: |
+          # ----------------------------------------------------------------------
+          # Crear el encabezado del HTML
+          # ----------------------------------------------------------------------
           echo "<html><head><meta charset='UTF-8'><title>Reporte de Análisis de Código</title></head><body>" > reporte.html
-          echo "<h1>🎯 Reporte Consolidado de Análisis de Código</h1>" >> reporte.html
+          echo "<h1>Reporte Consolidado de Análisis de Código</h1>" >> reporte.html
           echo "<p>Este informe resume los hallazgos de <b>Checkstyle</b>, <b>PMD</b> y <b>SpotBugs</b>.</p>" >> reporte.html
           echo "<hr>" >> reporte.html
 
-          # =======================
-          # CHECKSTYLE
-          # =======================
-          echo "<h2>🧹 Checkstyle – Formato y Estilo</h2>" >> reporte.html
+          # ----------------------------------------------------------------------
+          # 6.1 Checkstyle
+          # Crear tabla con columnas: Archivo, Línea, Mensaje, Recomendación. Se le da formato a la tabla y se formula lo que aparece en cada columna
+          # ----------------------------------------------------------------------
+          echo "<h2>Checkstyle – Formato y Estilo</h2>" >> reporte.html
           if grep -q "<error " target/checkstyle-result.xml; then
             echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Mensaje</th><th>Recomendación</th></tr>" >> reporte.html
             awk '
@@ -73,14 +108,15 @@ jobs:
             ' target/checkstyle-result.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
-            echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
+            echo "<p>Sin problemas detectados.</p>" >> reporte.html
           fi
           echo "<hr>" >> reporte.html
 
-          # =======================
-          # PMD
-          # =======================
-          echo "<h2>📏 PMD – Buenas Prácticas & Complejidad</h2>" >> reporte.html
+          # ----------------------------------------------------------------------
+          # 6.2 PMD
+          # Crear tabla con columnas: Archivo, Línea, Mensaje, Recomendación. Se le da formato a la tabla y se formula lo que aparece en cada columna
+          # ----------------------------------------------------------------------
+          echo "<h2>PMD – Buenas Prácticas y Complejidad</h2>" >> reporte.html
           if grep -q "<violation " target/pmd.xml; then
             echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Mensaje</th><th>Recomendación</th></tr>" >> reporte.html
             awk -F'"' '
@@ -95,14 +131,15 @@ jobs:
             ' target/pmd.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
-            echo "<p>✔ Sin problemas detectados.</p>" >> reporte.html
+            echo "<p>Sin problemas detectados.</p>" >> reporte.html
           fi
           echo "<hr>" >> reporte.html
 
-          # =======================
-          # SPOTBUGS
-          # =======================
-          echo "<h2>🐛 SpotBugs – Posibles Bugs Reales</h2>" >> reporte.html
+          # ----------------------------------------------------------------------
+          # 6.3 SpotBugs
+          # Crear tabla con columnas: Archivo, Línea, Tipo de Bug, Recomendación. Se le da formato a la tabla y se formula lo que aparece en cada columna
+          # ----------------------------------------------------------------------
+          echo "<h2>SpotBugs – Posibles Bugs Reales</h2>" >> reporte.html
           if grep -q "<BugInstance" target/spotbugsXml.xml; then
             echo "<table border='1'><tr><th>Archivo</th><th>Línea</th><th>Tipo de Bug</th><th>Recomendación</th></tr>" >> reporte.html
             awk -F'"' '
@@ -119,14 +156,15 @@ jobs:
             ' target/spotbugsXml.xml >> reporte.html
             echo "</table>" >> reporte.html
           else
-            echo "<p>✔ Sin bugs detectados.</p>" >> reporte.html
+            echo "<p>Sin bugs detectados.</p>" >> reporte.html
           fi
 
-          # =======================
-          # Recomendaciones finales
-          # =======================
+          # ----------------------------------------------------------------------
+          # 6.4 Recomendaciones finales generales
+          # Se dejan unas recomendaciones quemadas en el archivo para que el usuario tenga en cuenta en sus desarrollos
+          # ----------------------------------------------------------------------
           echo "<hr>" >> reporte.html
-          echo "<h2>💡 Recomendaciones Generales</h2>" >> reporte.html
+          echo "<h2>Recomendaciones Generales</h2>" >> reporte.html
           echo "<ul>" >> reporte.html
           echo "<li>Divide Tasks muy largas en subtareas Screenplay.</li>" >> reporte.html
           echo "<li>Usa Page Objects limpios y descriptivos.</li>" >> reporte.html
@@ -138,8 +176,10 @@ jobs:
           echo "</body></html>" >> reporte.html
 
       # ----------------------------------------------------------------------
-      # 4. Subir resultados
+      # 7. Subir resultados para revisión
+      # con un action subimos los reportes originales generados por las herramientas
       # ----------------------------------------------------------------------
+      
       - name: Subir reportes originales
         uses: actions/upload-artifact@v4
         with:
@@ -151,8 +191,11 @@ jobs:
             target/pmd.html
             target/site/spotbugs.html
 
+      # ----------------------------------------------------------------------
+      # con un action subimos el reporte HTML consolidado
+      # ----------------------------------------------------------------------
       - name: Subir reporte embellecido
         uses: actions/upload-artifact@v4
         with:
-          name: reporte_analisis_embellecido
+          name: Carpeta_reporte_analisis
           path: reporte.html
